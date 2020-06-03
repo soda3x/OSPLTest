@@ -1,24 +1,19 @@
-import java.time.LocalDateTime;
-import java.time.temporal.ChronoField;
 import java.util.ArrayList;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import org.omg.dds.core.Duration;
+
 import org.omg.dds.core.InstanceHandle;
 import org.omg.dds.core.ServiceEnvironment;
-import org.omg.dds.core.Time;
-import org.omg.dds.core.policy.PolicyFactory;
+import org.omg.dds.core.policy.Durability;
 import org.omg.dds.domain.DomainParticipant;
 import org.omg.dds.domain.DomainParticipantFactory;
 import org.omg.dds.pub.DataWriter;
 import org.omg.dds.pub.DataWriterQos;
 import org.omg.dds.pub.Publisher;
 import org.omg.dds.sub.DataReader;
-import org.omg.dds.sub.DataReader.Selector;
-import org.omg.dds.sub.Sample;
 import org.omg.dds.sub.Sample.Iterator;
 import org.omg.dds.sub.Subscriber;
 import org.omg.dds.topic.Topic;
+import org.opensplice.dds.core.policy.PolicyFactory;
 
 public class PublisherSubscriber {
   
@@ -29,6 +24,8 @@ public class PublisherSubscriber {
   private Publisher publisher;
   private DataWriter<TempSensorType> dataWriter;
   private short idCounter;
+  private Durability durabilityPolicy;
+  
   
   /**
    * Constructor configures OSPL
@@ -53,9 +50,12 @@ public class PublisherSubscriber {
 
     // Create publisher
     this.publisher = participant.createPublisher();
-
+    
+    // Create QoS
+    this.durabilityPolicy = PolicyFactory.getPolicyFactory(env).Durability().withTransient();
+    
     // Create DataWriter
-    this.dataWriter = publisher.createDataWriter(tempSensorTypeTopic);
+    this.dataWriter = publisher.createDataWriter(tempSensorTypeTopic, publisher.getDefaultDataWriterQos().withPolicy(this.durabilityPolicy));
   }
   
   /**
@@ -72,7 +72,7 @@ public class PublisherSubscriber {
    */
   public DataReader<TempSensorType> createSubscriber() {
     Subscriber s = this.getParticipant().createSubscriber();
-    return s.createDataReader(tempSensorTypeTopic);
+    return s.createDataReader(tempSensorTypeTopic, s.getDefaultDataReaderQos().withPolicy(this.durabilityPolicy));
   }
   
   /**
@@ -104,8 +104,7 @@ public class PublisherSubscriber {
     t.scale = TemperatureScale.CELSIUS;
 //    System.out.println("DEBUG: Created Temperature Sensor: " + t.toString());
     try {
-      InstanceHandle h = this.dataWriter.registerInstance(t);
-      this.dataWriter.write(t, h);
+      this.dataWriter.write(t);
     } catch (TimeoutException e) {
       e.printStackTrace();
     }
