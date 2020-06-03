@@ -1,22 +1,28 @@
 import java.util.ArrayList;
 import java.util.concurrent.TimeoutException;
 
-import org.omg.dds.core.InstanceHandle;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import org.omg.dds.core.ServiceEnvironment;
 import org.omg.dds.core.policy.Durability;
+import org.omg.dds.core.policy.History;
+import org.omg.dds.core.policy.QosPolicy.ForPublisher;
+import org.omg.dds.core.policy.Reliability;
 import org.omg.dds.domain.DomainParticipant;
 import org.omg.dds.domain.DomainParticipantFactory;
 import org.omg.dds.pub.DataWriter;
-import org.omg.dds.pub.DataWriterQos;
 import org.omg.dds.pub.Publisher;
+import org.omg.dds.pub.PublisherQos;
 import org.omg.dds.sub.DataReader;
 import org.omg.dds.sub.Sample.Iterator;
 import org.omg.dds.sub.Subscriber;
 import org.omg.dds.topic.Topic;
+import org.omg.dds.topic.TopicQos;
 import org.opensplice.dds.core.policy.PolicyFactory;
 
 public class PublisherSubscriber {
-  
+
   private ServiceEnvironment env;
   private DomainParticipantFactory dpf;
   private DomainParticipant participant;
@@ -25,8 +31,12 @@ public class PublisherSubscriber {
   private DataWriter<TempSensorType> dataWriter;
   private short idCounter;
   private Durability durabilityPolicy;
-  
-  
+  private History historyPolicy;
+  private Reliability reliabilityPolicy;
+
+  private static final Logger log = LogManager.getLogger(PublisherSubscriber.class);
+
+
   /**
    * Constructor configures OSPL
    */
@@ -50,33 +60,43 @@ public class PublisherSubscriber {
 
     // Create publisher
     this.publisher = participant.createPublisher();
-    
-    // Create QoS
-    this.durabilityPolicy = PolicyFactory.getPolicyFactory(env).Durability().withTransient();
-    
+
+    // Create QoS policies
+    // The following settings will allow late-joiners to receive all new data and all data
+    // previously sent from publishers
+    this.durabilityPolicy = PolicyFactory.getPolicyFactory(env).Durability().withTransientLocal();
+    this.reliabilityPolicy = PolicyFactory.getPolicyFactory(env).Reliability().withReliable();
+    this.historyPolicy = PolicyFactory.getPolicyFactory(env).History().withKeepAll();
+
     // Create DataWriter
-    this.dataWriter = publisher.createDataWriter(tempSensorTypeTopic, publisher.getDefaultDataWriterQos().withPolicy(this.durabilityPolicy));
+    this.dataWriter =
+        publisher.createDataWriter(tempSensorTypeTopic, publisher.getDefaultDataWriterQos()
+            .withPolicies(this.durabilityPolicy, this.reliabilityPolicy, this.historyPolicy));
   }
-  
+
   /**
    * Private Getter for participant
+   * 
    * @return participant
    */
   private DomainParticipant getParticipant() {
     return this.participant;
   }
-  
+
   /**
    * Create subscriber and return Data Reader
+   * 
    * @return DataReader
    */
   public DataReader<TempSensorType> createSubscriber() {
     Subscriber s = this.getParticipant().createSubscriber();
-    return s.createDataReader(tempSensorTypeTopic, s.getDefaultDataReaderQos().withPolicy(this.durabilityPolicy));
+    return s.createDataReader(tempSensorTypeTopic, s.getDefaultDataReaderQos()
+        .withPolicies(this.durabilityPolicy, this.reliabilityPolicy, this.historyPolicy));
   }
-  
+
   /**
    * Get Readings from Publisher
+   * 
    * @param DataReader
    * @return temperature readings
    */
@@ -89,9 +109,10 @@ public class PublisherSubscriber {
     }
     return output;
   }
-  
+
   /**
    * Create temperature reading and return instance handle
+   * 
    * @param temperature
    * @param humidity
    * @return temperature sensor instance
@@ -102,11 +123,10 @@ public class PublisherSubscriber {
     t.temp = temp;
     t.hum = hum;
     t.scale = TemperatureScale.CELSIUS;
-//    System.out.println("DEBUG: Created Temperature Sensor: " + t.toString());
     try {
       this.dataWriter.write(t);
     } catch (TimeoutException e) {
-      e.printStackTrace();
+      log.error("Error trying to create temperature reading - Timeout", e);
     }
   }
 }
