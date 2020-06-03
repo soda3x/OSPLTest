@@ -1,2 +1,2 @@
 # OSPLTest
- Test project demonstraing DDS Publisher Subscriber with OpenSplice
+ Test project demonstrating DDS Publisher Subscriber with OpenSplice
